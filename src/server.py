@@ -97,5 +97,72 @@ async def get_transcript(
         return f"Error fetching transcript: {e}"
 
 
+@app.tool()
+async def search_transcript(
+    video_id: str,
+    query: str,
+    languages: list[str] | None = None,
+    context_seconds: float = 5.0,
+) -> str:
+    """Search within a video's transcript for specific terms or phrases, returning matching segments with timestamps.
+
+    Args:
+        video_id: YouTube video URL or video ID
+        query: Text to search for within the transcript (case-insensitive)
+        languages: Language codes to try (e.g. ['en', 'hi']). Defaults to ['en']
+        context_seconds: Include surrounding context in seconds. Defaults to 5.0
+    """
+    video_id = _extract_video_id(video_id)
+    languages = languages or ["en"]
+
+    try:
+        api = YouTubeTranscriptApi()
+        transcript = api.fetch(video_id, languages=languages)
+
+        query_lower = query.lower()
+        matches = []
+        for i, seg in enumerate(transcript):
+            if query_lower in seg.text.lower():
+                match = {
+                    "text": seg.text.strip(),
+                    "start": seg.start,
+                    "duration": seg.duration,
+                }
+                if context_seconds > 0:
+                    before = [
+                        {"text": t.text.strip(), "start": t.start}
+                        for t in transcript
+                        if 0 <= seg.start - t.start <= context_seconds and t is not seg
+                    ]
+                    after = [
+                        {"text": t.text.strip(), "start": t.start}
+                        for t in transcript
+                        if 0 <= t.start - (seg.start + seg.duration) <= context_seconds
+                    ]
+                    if before:
+                        match["before"] = before
+                    if after:
+                        match["after"] = after
+                matches.append(match)
+
+        if not matches:
+            return f"No matches found for '{query}' in the transcript."
+
+        result = {
+            "video_id": video_id,
+            "query": query,
+            "match_count": len(matches),
+            "language": transcript.language,
+            "language_code": transcript.language_code,
+            "matches": matches[:50],
+            "truncated": len(matches) > 50,
+        }
+        return str(result)
+    except NoTranscriptFound:
+        return f"No transcript available for this video in languages: {languages}"
+    except Exception as e:
+        return f"Error searching transcript: {e}"
+
+
 if __name__ == "__main__":
     app.run(transport="stdio")
