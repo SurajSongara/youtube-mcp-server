@@ -9,22 +9,23 @@ load_dotenv()
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-import mcp.types as types
 
-from src.tools import search
+from src.tools import search, transcript
 
 app = Server("youtube-transcript")
 
 
 @app.list_tools()
 async def list_tools():
-    return [search.TOOL]
+    return [search.TOOL, transcript.TOOL]
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict):
     if name == "search_videos":
         return await search.handle(arguments)
+    if name == "get_transcript":
+        return await transcript.handle(arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 

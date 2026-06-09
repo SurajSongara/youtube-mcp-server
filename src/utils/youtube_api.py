@@ -1,4 +1,6 @@
 import os
+import re
+
 from googleapiclient.discovery import build
 
 
@@ -81,7 +83,6 @@ class YouTubeAPI:
 
     @staticmethod
     def _parse_duration(duration_iso: str) -> int:
-        import re
         match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_iso)
         if not match:
             return 0
