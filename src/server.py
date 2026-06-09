@@ -208,5 +208,23 @@ async def search_transcript(
         return f"Error searching transcript: {e}"
 
 
+@app.tool()
+async def get_metadata(video_id: str) -> str:
+    """Retrieve video metadata: title, description, duration, view count, like count, and more.
+
+    Requires YOUTUBE_API_KEY in .env.
+
+    Args:
+        video_id: YouTube video URL or video ID
+    """
+    video_id = _extract_video_id(video_id)
+    try:
+        yt = YouTubeAPI()
+        result = yt.get_video_metadata(video_id)
+        return str(result)
+    except Exception as e:
+        return f"Error fetching metadata: {e}"
+
+
 if __name__ == "__main__":
     app.run(transport="stdio")
