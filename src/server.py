@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+from difflib import SequenceMatcher
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -21,6 +22,34 @@ app = FastMCP("youtube-transcript")
 def _extract_video_id(value: str) -> str:
     match = VIDEO_ID_RE.search(value)
     return match.group(1) if match else value
+
+
+def _stem(word: str) -> str:
+    word = word.lower()
+    if len(word) < 4:
+        return word
+    for suffix in ["ing", "ed", "es", "s", "ly", "tion", "tions", "ment", "ments", "ness", "able", "ible", "ized", "ises"]:
+        if word.endswith(suffix) and len(word) > len(suffix) + 2:
+            return word[: -len(suffix)]
+    return word
+
+
+def _word_stems(text: str) -> set[str]:
+    stems = set()
+    for w in re.findall(r"[a-zA-Z0-9]+", text):
+        stems.add(_stem(w))
+    return stems
+
+
+def _text_matches(text: str, query_stems: set[str], threshold: float = 0.8) -> bool:
+    text_lower = text.lower()
+    for qs in query_stems:
+        if qs in text_lower:
+            return True
+        for tw in re.findall(r"[a-zA-Z0-9]+", text_lower):
+            if SequenceMatcher(None, qs, tw).ratio() >= threshold:
+                return True
+    return False
 
 
 @app.tool()
@@ -103,14 +132,20 @@ async def search_transcript(
     query: str,
     languages: list[str] | None = None,
     context_seconds: float = 5.0,
+    fuzzy: bool = True,
 ) -> str:
     """Search within a video's transcript for specific terms or phrases, returning matching segments with timestamps.
+
+    Uses exact substring matching by default. Enable fuzzy mode for stem-aware
+    matching and typo tolerance (e.g., 'standard' matches 'standards', 'coding'
+    matches 'codes'). No external dependencies.
 
     Args:
         video_id: YouTube video URL or video ID
         query: Text to search for within the transcript (case-insensitive)
         languages: Language codes to try (e.g. ['en', 'hi']). Defaults to ['en']
         context_seconds: Include surrounding context in seconds. Defaults to 5.0
+        fuzzy: Enable stem-aware and fuzzy matching. Defaults to True
     """
     video_id = _extract_video_id(video_id)
     languages = languages or ["en"]
@@ -119,31 +154,39 @@ async def search_transcript(
         api = YouTubeTranscriptApi()
         transcript = api.fetch(video_id, languages=languages)
 
+        query_stems = _word_stems(query) if fuzzy else set()
         query_lower = query.lower()
+
         matches = []
-        for i, seg in enumerate(transcript):
-            if query_lower in seg.text.lower():
-                match = {
-                    "text": seg.text.strip(),
-                    "start": seg.start,
-                    "duration": seg.duration,
-                }
-                if context_seconds > 0:
-                    before = [
-                        {"text": t.text.strip(), "start": t.start}
-                        for t in transcript
-                        if 0 <= seg.start - t.start <= context_seconds and t is not seg
-                    ]
-                    after = [
-                        {"text": t.text.strip(), "start": t.start}
-                        for t in transcript
-                        if 0 <= t.start - (seg.start + seg.duration) <= context_seconds
-                    ]
-                    if before:
-                        match["before"] = before
-                    if after:
-                        match["after"] = after
-                matches.append(match)
+        for seg in transcript:
+            text = seg.text
+            if fuzzy:
+                if not _text_matches(text, query_stems):
+                    continue
+            elif query_lower not in text.lower():
+                continue
+
+            match = {
+                "text": text.strip(),
+                "start": seg.start,
+                "duration": seg.duration,
+            }
+            if context_seconds > 0:
+                before = [
+                    {"text": t.text.strip(), "start": t.start}
+                    for t in transcript
+                    if 0 <= seg.start - t.start <= context_seconds and t is not seg
+                ]
+                after = [
+                    {"text": t.text.strip(), "start": t.start}
+                    for t in transcript
+                    if 0 <= t.start - (seg.start + seg.duration) <= context_seconds
+                ]
+                if before:
+                    match["before"] = before
+                if after:
+                    match["after"] = after
+            matches.append(match)
 
         if not matches:
             return f"No matches found for '{query}' in the transcript."
@@ -151,6 +194,7 @@ async def search_transcript(
         result = {
             "video_id": video_id,
             "query": query,
+            "fuzzy": fuzzy,
             "match_count": len(matches),
             "language": transcript.language,
             "language_code": transcript.language_code,
