@@ -12,7 +12,7 @@ An MCP server that lets AI agents search YouTube, fetch video transcripts, and r
 ## Tech Stack
 
 - **Python 3.12+**
-- **[MCP SDK](https://github.com/modelcontextprotocol/python-sdk)** — MCP protocol implementation
+- **[FastMCP](https://github.com/modelcontextprotocol/python-sdk)** — MCP framework
 - **YouTube Data API v3** — video search
 - **youtube-transcript-api** — transcript extraction (no auth required)
 
@@ -51,12 +51,9 @@ python -m src.server
 
 ```
 src/
-├── server.py               # MCP server entry point
-├── tools/
-│   ├── search.py           # search_videos tool
-│   └── transcript.py       # get_transcript tool
+├── server.py          # FastMCP server with both tools
 └── utils/
-    └── youtube_api.py      # YouTube Data API client
+    └── youtube_api.py  # YouTube Data API client
 ```
 
 ## Status
